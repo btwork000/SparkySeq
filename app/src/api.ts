@@ -133,6 +133,46 @@ export interface PatternDetail {
   padsUsed: number[];
 }
 
+/** A note in the pattern editor (`pattern_editor.rs`). */
+export interface EditNote {
+  tick: number;
+  /** 0..160, bank × 16 + pad. */
+  pad: number;
+  velocity: number;
+  /** Stored gate: duration in ticks minus one. */
+  gate: number;
+  pitch: number;
+  offVelocity: number;
+  flags: number;
+  /** Position in the file, keeps the order of records on the same tick. */
+  order: number;
+}
+
+/** A record the editor does not show, carried back unchanged. */
+export interface ExtraRecord {
+  tick: number;
+  bytes: number[];
+  order: number;
+}
+
+export interface EditablePattern {
+  slot: number;
+  label: string;
+  exists: boolean;
+  /** 1-based. */
+  project: number;
+  lengthTicks: number;
+  bars: number;
+  barTicks: number;
+  fourFour: boolean;
+  /** BPM × 100. */
+  bankTempo: number;
+  trailer: number[];
+  notes: EditNote[];
+  extras: ExtraRecord[];
+  defaultPitch: number;
+}
+
 /** A pad's grid entry and details, read back after a change. */
 export interface PadState {
   pad: Pad;
@@ -309,6 +349,17 @@ export const api = {
   previewStop: (pad: number) => invoke<void>("preview_stop", { pad }),
   patterns: () => invoke<boolean[]>("patterns"),
   patternDetail: (slot: number) => invoke<PatternDetail>("pattern_detail", { slot }),
+  patternOpen: (slot: number) => invoke<EditablePattern>("pattern_open", { slot }),
+  /** Returns where the replaced pattern was saved, or null for a new one. */
+  patternWrite: (p: {
+    slot: number;
+    project: number;
+    lengthTicks: number;
+    bars: number | null;
+    trailer: number[];
+    notes: EditNote[];
+    extras: ExtraRecord[];
+  }) => invoke<string | null>("pattern_write", p),
   screens: () => invoke<ScreenImages>("screens"),
   listVolume: (volume: Volume, path: string) => invoke<CardListing>("list_volume", { volume, path }),
   fileSizes: (volume: Volume, paths: string[]) => invoke<(number | null)[]>("file_sizes", { volume, paths }),

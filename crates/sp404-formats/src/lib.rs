@@ -3,6 +3,7 @@
 pub mod audio;
 pub mod padconf;
 pub mod pattern;
+pub mod pattern_edit;
 pub mod picture;
 pub mod picture_share;
 pub mod smf;

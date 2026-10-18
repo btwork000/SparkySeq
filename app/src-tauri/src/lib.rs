@@ -6,6 +6,7 @@ mod export;
 mod files;
 mod library;
 mod logging;
+mod pattern_editor;
 mod screens;
 
 use std::sync::{Arc, Mutex};
@@ -63,6 +64,8 @@ pub fn run() {
             commands::preview_stop,
             commands::patterns,
             commands::pattern_detail,
+            pattern_editor::pattern_open,
+            pattern_editor::pattern_write,
             edit::set_pad_param,
             edit::set_chop_points,
             edit::rename_sample,

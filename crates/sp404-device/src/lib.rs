@@ -6,6 +6,7 @@
 
 mod control;
 mod files;
+mod patterns;
 mod render;
 pub mod screens;
 
@@ -21,6 +22,7 @@ use serialport::{SerialPort, SerialPortType};
 use sp404_proto::{Channel, Decoder, Message, ProtoError};
 
 pub use files::{DirEntry, Stat};
+pub use patterns::pattern_path;
 
 /// USB ids of the SP-404MKII's serial function.
 pub const USB_VID: u16 = 0x0582;
@@ -111,7 +113,7 @@ fn open_port(port_name: &str) -> serialport::Result<Box<dyn SerialPort>> {
 #[cfg(windows)]
 fn open_port(port_name: &str) -> serialport::Result<Box<dyn SerialPort>> {
     use std::os::windows::io::AsRawHandle;
-    use windows_sys::Win32::Devices::Communication::{SetCommTimeouts, COMMTIMEOUTS};
+    use windows_sys::Win32::Devices::Communication::{COMMTIMEOUTS, SetCommTimeouts};
 
     let port = serialport::new(port_name, BAUD)
         .flow_control(serialport::FlowControl::None)

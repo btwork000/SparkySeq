@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import BankStrip from "../components/BankStrip.vue";
 import NoteLanes from "../components/NoteLanes.vue";
 import PadGrid from "../components/PadGrid.vue";
+import PatternEditor from "../components/PatternEditor.vue";
 import { api, type PatternDetail } from "../api";
 import { bpm, padLabel } from "../format";
 import { exportPattern } from "../exporting";
@@ -19,6 +20,14 @@ const detail = ref<PatternDetail | null>(null);
 const rendering = ref(false);
 const loading = ref(false);
 let request = 0;
+/** The slot open in the pattern editor, or null. */
+const editing = ref<number | null>(null);
+
+function closeEditor() {
+  editing.value = null;
+  // The pattern may have changed on the device: read the slot again.
+  store.patterns = [...store.patterns];
+}
 
 if (!store.patterns.length && !store.patternsLoading) loadPatterns();
 
@@ -52,6 +61,8 @@ watch(
 
 <template>
   <div class="patterns">
+    <PatternEditor v-if="editing !== null" :slot-index="editing" @close="closeEditor" />
+    <template v-else>
     <BankStrip :counts="counts" :loading="store.patternsLoading" />
 
     <div class="body">
@@ -71,8 +82,9 @@ watch(
 
       <section class="detail panel">
         <div v-if="store.selectedPattern === null" class="placeholder muted">Select a pattern slot.</div>
-        <div v-else-if="!store.patterns[store.selectedPattern]" class="placeholder muted">
+        <div v-else-if="!store.patterns[store.selectedPattern]" class="placeholder muted empty-slot">
           {{ padLabel(store.selectedPattern) }} holds no pattern.
+          <button :disabled="store.pending > 0" @click="editing = store.selectedPattern">Créer un pattern ici…</button>
         </div>
         <div v-else-if="loading" class="placeholder muted"><span class="spinner" /> Reading pattern…</div>
 
@@ -86,6 +98,7 @@ watch(
               <div><span class="label">Notes</span><span class="mono">{{ detail.notes.length }}</span></div>
               <div v-if="detail.controlEvents"><span class="label">Controls</span><span class="mono">{{ detail.controlEvents }}</span></div>
             </div>
+            <button class="primary edit" :disabled="store.pending > 0" @click="editing = detail.index">Éditer…</button>
           </header>
 
           <div>
@@ -119,6 +132,7 @@ watch(
         </template>
       </section>
     </div>
+    </template>
   </div>
 </template>
 
@@ -138,6 +152,14 @@ watch(
   display: grid;
   grid-template-columns: minmax(360px, 440px) 1fr;
   gap: 14px;
+}
+
+.edit {
+  margin-left: auto;
+}
+
+.empty-slot {
+  flex-direction: column;
 }
 
 .slot-name {
