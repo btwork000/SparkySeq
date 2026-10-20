@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Step editor for one pattern: 16 pads of a bank against a 1/32 grid.
+// Step editor for one pattern: 16 pads of a bank against a grid of 1/4 to 1/32 notes.
 //
 // Click an empty cell to add a note, drag a note to move it, drag its right edge to
 // change its length, right-click (or double-click) to delete it. The selected note's
@@ -11,15 +11,18 @@ import { api, type EditNote, type EditablePattern, type ExtraRecord } from "../a
 import { BANK_LETTERS, bpm, padLabel } from "../format";
 import { ask, handleError, notify, store } from "../store";
 import {
+  BAR_TICKS,
+  GRIDS,
   STEP,
-  STEPS_PER_BAR,
   addNote,
   clip,
   duration,
+  floorTo,
   move,
   noteAt,
   position,
   resize,
+  roundTo,
 } from "../patternEdit";
 
 const props = defineProps<{ slotIndex: number }>();
@@ -42,15 +45,23 @@ const model = reactive({
 const dirty = ref(false);
 const selected = ref<EditNote | null>(null);
 const viewBank = ref(Math.floor(props.slotIndex / 16));
+/** Zoom: pixels per 1/32 note, whatever the grid. */
 const cell = ref<number>(Number(localStorage.getItem("sparkymk2.editor.cell")) || 14);
+/** Grid step in ticks: where notes snap when placed, moved or stretched. */
+const grid = ref<number>(
+  GRIDS.some((g) => g.ticks === Number(localStorage.getItem("sparkymk2.editor.grid")))
+    ? Number(localStorage.getItem("sparkymk2.editor.grid"))
+    : 120,
+);
+const px = (ticks: number) => (ticks / STEP) * cell.value;
 const listen = ref(true);
-/** Length and velocity of the last note placed or edited: the next one starts like it. */
-const lastSteps = ref(2);
+/** Length (ticks) and velocity of the last note placed or edited: the next one starts
+ * like it, but never shorter than one grid step. */
+const lastLength = ref(120);
 const lastVelocity = ref(100);
 let nextOrder = 1_000_000;
 
-const steps = computed(() => Math.ceil(model.lengthTicks / STEP));
-const width = computed(() => steps.value * cell.value);
+const width = computed(() => px(model.lengthTicks));
 const rows = computed(() => Array.from({ length: 16 }, (_, r) => viewBank.value * 16 + r));
 const visible = computed(() => model.notes.filter((n) => Math.floor(n.pad / 16) === viewBank.value));
 const perBank = computed(() => {
@@ -151,7 +162,7 @@ async function audition(pad: number, ticks: number | null) {
 // ---- editing with the mouse ----
 
 type Drag =
-  | { kind: "move"; note: EditNote; x: number; y: number; step: number; row: number; moved: boolean }
+  | { kind: "move"; note: EditNote; x: number; y: number; tick: number; row: number; moved: boolean }
   /** `saved`: an undo step already covers this drag (the note was just added). */
   | { kind: "resize"; note: EditNote; moved: boolean; saved: boolean };
 let drag: Drag | null = null;
@@ -161,7 +172,8 @@ function locate(e: PointerEvent) {
   const box = lanes.value!.getBoundingClientRect();
   const x = e.clientX - box.left;
   const y = e.clientY - box.top;
-  return { x, y, step: Math.floor(x / cell.value), row: Math.floor(y / ROW) };
+  const tick = Math.max(0, (x / cell.value) * STEP);
+  return { x, y, tick, row: Math.floor(y / ROW) };
 }
 
 function onDown(e: PointerEvent) {
@@ -179,14 +191,14 @@ function onDown(e: PointerEvent) {
     if (target.dataset.handle !== undefined) {
       drag = { kind: "resize", note, moved: false, saved: false };
     } else {
-      drag = { kind: "move", note, x: at.x, y: at.y, step: Math.round(note.tick / STEP), row: at.row, moved: false };
+      drag = { kind: "move", note, x: at.x, y: at.y, tick: note.tick, row: at.row, moved: false };
       audition(note.pad, duration(note));
     }
     return;
   }
 
-  // Empty space. A cell partly covered by a note off the grid selects that note.
-  const hit = noteAt(model.notes, pad, at.step * STEP);
+  // Empty space. A note sounding under the pointer (off the grid, say) is selected instead.
+  const hit = noteAt(model.notes, pad, at.tick);
   if (hit) {
     selected.value = hit;
     return;
@@ -195,8 +207,8 @@ function onDown(e: PointerEvent) {
   const note = addNote(
     model.notes,
     pad,
-    at.step,
-    lastSteps.value,
+    floorTo(at.tick, grid.value),
+    Math.max(grid.value, lastLength.value),
     lastVelocity.value,
     { pitch: source.value!.defaultPitch, order: nextOrder++ },
     model.lengthTicks,
@@ -214,31 +226,33 @@ function onMove(e: PointerEvent) {
   if (!drag) return;
   const at = locate(e);
   if (drag.kind === "resize") {
-    const endStep = Math.round(at.x / cell.value);
+    const endTick = roundTo(at.tick, grid.value);
     const before = drag.note.gate;
     if (!drag.moved) {
-      if (endStep * STEP === drag.note.tick + duration(drag.note)) return;
+      if (endTick === drag.note.tick + duration(drag.note)) return;
       if (!drag.saved) checkpoint();
       drag.moved = true;
     }
-    resize(model.notes, drag.note, endStep, model.lengthTicks);
-    if (drag.note.gate !== before) lastSteps.value = Math.max(1, Math.round(duration(drag.note) / STEP));
+    resize(model.notes, drag.note, endTick, model.lengthTicks, grid.value);
+    if (drag.note.gate !== before) lastLength.value = duration(drag.note);
     return;
   }
-  const ds = Math.round((at.x - drag.x) / cell.value);
+  const dx = ((at.x - drag.x) / cell.value) * STEP;
   const dr = Math.round((at.y - drag.y) / ROW);
-  if (!drag.moved && ds === 0 && dr === 0) return;
+  // Snap the moved note to the grid only once the pointer has gone at least half a step,
+  // so a click on a note off the grid does not shift it.
+  const shifted = Math.abs(dx) >= grid.value / 2;
+  if (!drag.moved && !shifted && dr === 0) return;
   const row = Math.min(15, Math.max(0, drag.row + dr));
   const pad = rows.value[row];
-  const step = drag.step + ds;
+  const tick = shifted ? roundTo(drag.tick + dx, grid.value) : drag.tick;
   const wasPad = drag.note.pad;
-  const wasTick = drag.note.tick;
-  if (step * STEP === wasTick && pad === wasPad) return;
+  if (tick === drag.note.tick && pad === wasPad) return;
   if (!drag.moved) {
     checkpoint();
     drag.moved = true;
   }
-  if (move(model.notes, drag.note, step, pad, model.lengthTicks) && pad !== wasPad) {
+  if (move(model.notes, drag.note, tick, pad, model.lengthTicks) && pad !== wasPad) {
     audition(pad, duration(drag.note));
   }
 }
@@ -271,15 +285,17 @@ function setVelocity(v: number) {
   lastVelocity.value = value;
 }
 
+/** Set the selected note's length in grid steps. */
 function setSteps(s: number) {
   const n = selected.value;
   if (!n || !Number.isFinite(s)) return;
   checkpoint();
-  resize(model.notes, n, Math.floor(n.tick / STEP) + Math.max(1, Math.round(s)), model.lengthTicks);
-  lastSteps.value = Math.max(1, Math.round(duration(n) / STEP));
+  resize(model.notes, n, n.tick + Math.max(1, Math.round(s)) * grid.value, model.lengthTicks, grid.value);
+  lastLength.value = duration(n);
 }
 
-const selectedSteps = computed(() => (selected.value ? duration(selected.value) / STEP : 0));
+const selectedSteps = computed(() => (selected.value ? duration(selected.value) / grid.value : 0));
+const gridLabel = computed(() => GRIDS.find((g) => g.ticks === grid.value)?.label ?? "");
 
 function onKey(e: KeyboardEvent) {
   if (!editable.value || (e.target as HTMLElement).closest("input, select, textarea")) return;
@@ -299,8 +315,8 @@ function onKey(e: KeyboardEvent) {
   } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
     e.preventDefault();
     checkpoint();
-    const step = Math.round(n.tick / STEP) + (e.key === "ArrowRight" ? 1 : -1);
-    if (!move(model.notes, n, step, n.pad, model.lengthTicks)) history.pop();
+    const tick = roundTo(n.tick, grid.value) + (e.key === "ArrowRight" ? 1 : -1) * grid.value;
+    if (!move(model.notes, n, tick, n.pad, model.lengthTicks)) history.pop();
   }
 }
 
@@ -313,7 +329,7 @@ onBeforeUnmount(() => {
 // ---- length, zoom, sending ----
 
 async function setBars(bars: number) {
-  const length = bars * STEPS_PER_BAR * STEP;
+  const length = bars * BAR_TICKS;
   if (length === model.lengthTicks) return;
   const lost = model.notes.filter((n) => n.tick >= length).length;
   if (lost) {
@@ -338,7 +354,16 @@ async function setBars(bars: number) {
 
 function setCell(v: number) {
   cell.value = v;
-  localStorage.setItem("sparkymk2.editor.cell", String(v));
+  try {
+    localStorage.setItem("sparkymk2.editor.cell", String(v));
+  } catch {}
+}
+
+function setGrid(ticks: number) {
+  grid.value = ticks;
+  try {
+    localStorage.setItem("sparkymk2.editor.grid", String(ticks));
+  } catch {}
 }
 
 async function send() {
@@ -398,25 +423,31 @@ async function revert() {
 
 open();
 
-// The grid: faint lines every step, stronger on beats, strongest on bars.
+// The grid: a line on every grid step, stronger on beats, strongest on bars. Every other
+// beat is shaded so the pulse reads at a glance.
 const gridStyle = computed(() => {
-  const c = cell.value;
+  const step = px(grid.value);
+  const beat = px(480);
+  const bar = px(BAR_TICKS);
   return {
     width: `${width.value}px`,
     height: `${16 * ROW}px`,
     backgroundImage: [
-      `repeating-linear-gradient(to right, var(--line-strong) 0 1px, transparent 1px ${c * STEPS_PER_BAR}px)`,
-      `repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px ${c * 8}px)`,
-      c >= 8 ? `repeating-linear-gradient(to right, rgba(255,255,255,0.035) 0 1px, transparent 1px ${c}px)` : "none",
+      `repeating-linear-gradient(to right, var(--line-strong) 0 1px, transparent 1px ${bar}px)`,
+      `repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px ${beat}px)`,
+      grid.value < 480 && step >= 5
+        ? `repeating-linear-gradient(to right, rgba(255,255,255,0.05) 0 1px, transparent 1px ${step}px)`
+        : "none",
+      `repeating-linear-gradient(to right, transparent 0 ${beat}px, rgba(255,255,255,0.018) ${beat}px ${2 * beat}px)`,
       `repeating-linear-gradient(to bottom, transparent 0 ${ROW - 1}px, var(--line) ${ROW - 1}px ${ROW}px)`,
     ].join(","),
   };
 });
 
 const noteStyle = (n: EditNote) => ({
-  left: `${(n.tick / STEP) * cell.value}px`,
+  left: `${px(n.tick)}px`,
   top: `${(n.pad % 16) * ROW + 3}px`,
-  width: `${Math.max(3, (duration(n) / STEP) * cell.value - 1)}px`,
+  width: `${Math.max(3, px(duration(n)) - 1)}px`,
   height: `${ROW - 6}px`,
   "--v": String(n.velocity / 127),
 });
@@ -436,11 +467,20 @@ const noteStyle = (n: EditNote) => ({
           <button
             v-for="b in BAR_CHOICES"
             :key="b"
-            :class="{ on: model.lengthTicks === b * STEPS_PER_BAR * STEP }"
+            :class="{ on: model.lengthTicks === b * BAR_TICKS }"
             :disabled="!editable"
             @click="setBars(b)"
           >
             {{ b }}
+          </button>
+        </div>
+      </div>
+
+      <div class="group">
+        <span class="label">Grille</span>
+        <div class="seg">
+          <button v-for="g in GRIDS" :key="g.ticks" :class="{ on: grid === g.ticks }" @click="setGrid(g.ticks)">
+            {{ g.label }}
           </button>
         </div>
       </div>
@@ -487,7 +527,7 @@ const noteStyle = (n: EditNote) => ({
           <span class="mono small num">{{ selected.velocity }}</span>
         </label>
         <label class="group">
-          <span class="label">Longueur (1/32)</span>
+          <span class="label">Longueur ({{ gridLabel }})</span>
           <input
             class="steps mono"
             type="number"
@@ -530,7 +570,7 @@ const noteStyle = (n: EditNote) => ({
             v-for="b in model.bars"
             :key="b"
             class="bar-num mono"
-            :style="{ left: `${(b - 1) * STEPS_PER_BAR * cell}px` }"
+            :style="{ left: `${px((b - 1) * BAR_TICKS)}px` }"
           >
             {{ b }}
           </span>

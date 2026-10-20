@@ -5,15 +5,16 @@ sur un emplacement vide).
 
 ## Utilisation
 
-- Grille au 1/32, 16 pads affichés ; les boutons A à J changent de banque (le chiffre
-  indique les notes présentes dans chaque banque).
+- **Grille** : 1/4, 1/8, 1/16 ou 1/32 (1/16 par défaut, le choix est retenu). Les notes
+  se calent dessus quand on les pose, les déplace ou les allonge. 16 pads affichés ; les
+  boutons A à J changent de banque (le chiffre indique les notes de chaque banque).
 - **Clic** sur une case vide : ajoute une note (même longueur et vélocité que la
   dernière). Glisser tout de suite après le clic l'allonge.
 - **Glisser une note** : la déplacer dans le temps ou sur un autre pad.
 - **Bord droit d'une note** : régler sa longueur.
 - **Clic droit** ou **double-clic** : supprimer. Touche Suppr aussi.
-- Note sélectionnée : vélocité et longueur dans la barre ; flèches haut/bas = vélocité,
-  gauche/droite = déplacer d'un pas. **Ctrl+Z** annule.
+- Note sélectionnée : vélocité et longueur (en pas de grille) dans la barre ; flèches
+  haut/bas = vélocité, gauche/droite = déplacer d'un pas de grille. **Ctrl+Z** annule.
 - **Mesures** : 2, 4, 8 ou 16. Raccourcir demande confirmation si des notes disparaissent.
 - **Écouter sur la 404** : chaque note posée ou déplacée sonne sur la machine. Maintenir
   le nom d'un pad à gauche le fait sonner.

@@ -1,5 +1,6 @@
 // Editing rules of the pattern editor, kept apart from the component so they stay small
-// and readable. Times are in ticks (480 per quarter note). The grid step is a 1/32 note.
+// and readable. Times are in ticks (480 per quarter note). The grid step is chosen in the
+// editor (1/4 to 1/32); the finest, a 1/32 note, is `STEP`.
 //
 // A note's stored gate is its duration minus one tick (a 1/16 note is 119), as the
 // SP-404MKII writes it. Two notes on the same pad never overlap: a note stops where the
@@ -7,9 +8,23 @@
 // left as they are, and so are notes off the grid until they are moved.
 import type { EditNote } from "./api";
 
-/** Ticks in one grid step: a 1/32 note. */
+/** Ticks in a 1/32 note, the finest grid step. */
 export const STEP = 60;
 export const STEPS_PER_BAR = 32;
+export const BAR_TICKS = STEP * STEPS_PER_BAR;
+
+/** The grid steps the editor offers, in ticks. */
+export const GRIDS = [
+  { label: "1/4", ticks: 480 },
+  { label: "1/8", ticks: 240 },
+  { label: "1/16", ticks: 120 },
+  { label: "1/32", ticks: 60 },
+];
+
+/** `tick` rounded down to the grid. */
+export const floorTo = (tick: number, grid: number) => Math.floor(tick / grid) * grid;
+/** `tick` rounded to the nearest grid line. */
+export const roundTo = (tick: number, grid: number) => Math.round(tick / grid) * grid;
 
 export const duration = (n: EditNote) => n.gate + 1;
 export const end = (n: EditNote) => n.tick + n.gate + 1;
@@ -47,26 +62,25 @@ export function fits(notes: EditNote[], pad: number, tick: number, length: numbe
 }
 
 /**
- * Add a note at grid `step` on `pad`, `steps` long, shortened to stop before the next
- * note on the pad and at the end of the pattern. A note already sounding there on that
- * pad is cut short so the two do not overlap. Returns the new note, or null when the
- * step is past the end.
+ * Add a note at `tick` on `pad`, `ticks` long, shortened to stop before the next note on
+ * the pad and at the end of the pattern. A note already sounding there on that pad is cut
+ * short so the two do not overlap. Returns the new note, or null when `tick` is past the
+ * end.
  */
 export function addNote(
   notes: EditNote[],
   pad: number,
-  step: number,
-  steps: number,
+  tick: number,
+  ticks: number,
   velocity: number,
   defaults: { pitch: number; order: number },
   length: number,
 ): EditNote | null {
-  const tick = step * STEP;
   if (tick < 0 || tick >= length) return null;
   for (const n of samePad(notes, pad)) {
     if (n.tick < tick && end(n) > tick) n.gate = tick - n.tick - 1;
   }
-  const stop = Math.min(tick + steps * STEP, nextStart(notes, pad, tick, length));
+  const stop = Math.min(tick + ticks, nextStart(notes, pad, tick, length));
   const note: EditNote = {
     tick,
     pad,
@@ -81,19 +95,18 @@ export function addNote(
   return note;
 }
 
-/** Move the end of `note` to grid step `endStep`, at least one step past where the note
- * starts and no further than the next note on its pad or the end of the pattern. */
-export function resize(notes: EditNote[], note: EditNote, endStep: number, length: number) {
-  const first = (Math.floor(note.tick / STEP) + 1) * STEP;
+/** Move the end of `note` to `endTick`: at least to the first grid line after the note
+ * starts, and no further than the next note on its pad or the end of the pattern. */
+export function resize(notes: EditNote[], note: EditNote, endTick: number, length: number, grid: number) {
+  const first = floorTo(note.tick, grid) + grid;
   const last = nextStart(notes, note.pad, note.tick, length, note);
-  const stop = Math.max(first, Math.min(endStep * STEP, last));
-  note.gate = stop - note.tick - 1;
+  const stop = Math.min(Math.max(first, endTick), last);
+  note.gate = Math.max(1, stop - note.tick) - 1;
 }
 
-/** Move `note` to grid step `step` on `pad`, keeping its length. Returns false, leaving the
- * note where it was, when it would overlap another note or leave the pattern. */
-export function move(notes: EditNote[], note: EditNote, step: number, pad: number, length: number): boolean {
-  const tick = step * STEP;
+/** Move `note` to `tick` on `pad`, keeping its length. Returns false, leaving the note
+ * where it was, when it would overlap another note or leave the pattern. */
+export function move(notes: EditNote[], note: EditNote, tick: number, pad: number, length: number): boolean {
   if (tick < 0 || tick + duration(note) > length) return false;
   if (!fits(notes, pad, tick, duration(note), note)) return false;
   note.tick = tick;
