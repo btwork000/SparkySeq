@@ -13,8 +13,15 @@ sur un emplacement vide).
 - **Glisser une note** : la déplacer dans le temps ou sur un autre pad.
 - **Bord droit d'une note** : régler sa longueur.
 - **Clic droit** ou **double-clic** : supprimer. Touche Suppr aussi.
-- Note sélectionnée : vélocité et longueur (en pas de grille) dans la barre ; flèches
-  haut/bas = vélocité, gauche/droite = déplacer d'un pas de grille. **Ctrl+Z** annule.
+- Note sélectionnée : vélocité, longueur (en pas de grille) et humanize dans la barre ;
+  flèches haut/bas = vélocité, gauche/droite = déplacer d'un pas de grille. **Ctrl+Z**
+  annule.
+- **Humanize** : l'écart entre le vrai départ d'une note et la ligne de 1/32 la plus
+  proche, quelle que soit la grille affichée. Négatif = en avance, positif = en retard.
+  Réglé en millisecondes (les ticks sont affichés à côté), limité à ±29 ticks (une
+  demi-case de 1/32). La note est dessinée sur sa ligne de 1/32, un trait orange marque son
+  vrai départ et sa valeur s'affiche dedans quand elle est assez large. Une note déplacée
+  garde son humanize.
 - **Mesures** : 2, 4, 8 ou 16. Raccourcir demande confirmation si des notes disparaissent.
 - **Écouter sur la 404** : chaque note posée ou déplacée sonne sur la machine. Maintenir
   le nom d'un pad à gauche le fait sonner.
@@ -24,8 +31,9 @@ sur un emplacement vide).
 ## Règles
 
 - Deux notes sur un même pad s'excluent : une note s'arrête au début de la suivante.
-- Les notes hors grille (enregistrées en live) gardent leur position exacte ; elles sont
-  en pointillés. Une note déplacée se cale sur la grille.
+- Les notes jouées en live gardent leur position exacte : leur écart à la grille apparaît
+  comme leur humanize. Rien d'autre n'est stocké : la 404 garde la position de chaque note
+  au tick près (480 par noire).
 - Les octets non compris (contrôles, enregistrements inconnus, pitch, drapeaux) sont
   recopiés tels quels.
 - 4/4 uniquement : les autres signatures s'ouvrent en lecture seule.

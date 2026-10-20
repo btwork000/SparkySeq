@@ -29,15 +29,37 @@ export const roundTo = (tick: number, grid: number) => Math.round(tick / grid) *
 export const duration = (n: EditNote) => n.gate + 1;
 export const end = (n: EditNote) => n.tick + n.gate + 1;
 
-/** Bar, beat and step (all 1-based) of a tick, as the device shows positions. */
+/** Bar, beat and 1/32 step (all 1-based) of a position on the 1/32 grid. */
 export function position(tick: number): string {
-  const step = Math.floor(tick / STEP);
+  const step = Math.round(tick / STEP);
   const bar = Math.floor(step / STEPS_PER_BAR) + 1;
   const beat = Math.floor((step % STEPS_PER_BAR) / 8) + 1;
   const sub = (step % 8) + 1;
-  const off = tick % STEP ? " (hors grille)" : "";
-  return `${bar}.${beat}.${sub}${off}`;
+  return `${bar}.${beat}.${sub}`;
 }
+
+// ---- humanize ----
+//
+// A note's humanize is how far it starts from the nearest 1/32 line, whatever grid is
+// shown: negative ahead of the beat, positive behind it. Nothing extra is stored: the
+// SP-404MKII keeps each note's exact tick, and the humanize is read from it.
+
+/** Largest humanize either way, in ticks: just under half a 1/32 step. */
+export const HUMANIZE_MAX = STEP / 2 - 1;
+
+/** The 1/32 line a note belongs to. A note within half a step of the end belongs to the
+ * last step rather than to the end itself. */
+export function anchorOf(n: EditNote, length: number): number {
+  const anchor = roundTo(n.tick, STEP);
+  return anchor >= length ? anchor - STEP : anchor;
+}
+
+/** Ticks between the note and its 1/32 line. */
+export const humanizeOf = (n: EditNote, length: number) => n.tick - anchorOf(n, length);
+
+/** Ticks to milliseconds at `bpm`, and back. */
+export const ticksToMs = (ticks: number, bpm: number) => (ticks * 60000) / (480 * bpm);
+export const msToTicks = (ms: number, bpm: number) => Math.round((ms * 480 * bpm) / 60000);
 
 function samePad(notes: EditNote[], pad: number, except?: EditNote): EditNote[] {
   return notes.filter((n) => n.pad === pad && n !== except);

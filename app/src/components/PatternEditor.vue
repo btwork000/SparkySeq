@@ -3,9 +3,12 @@
 //
 // Click an empty cell to add a note, drag a note to move it, drag its right edge to
 // change its length, right-click (or double-click) to delete it. The selected note's
-// velocity and length are also set in the bar above the grid; the arrow keys nudge it,
+// velocity, length and humanize are also set in the bar above the grid; the arrow keys nudge it,
 // Delete removes it, Ctrl+Z undoes. Notes sound on the SP-404MKII as they are placed.
 // Nothing reaches the device until "Envoyer vers la 404".
+//
+// Each note is drawn on its 1/32 line; its humanize (how far it really starts from that
+// line, ahead or behind) shows as a mark and a value, and stays with it when it moves.
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { api, type EditNote, type EditablePattern, type ExtraRecord } from "../api";
 import { BANK_LETTERS, bpm, padLabel } from "../format";
@@ -13,7 +16,12 @@ import { ask, handleError, notify, store } from "../store";
 import {
   BAR_TICKS,
   GRIDS,
+  HUMANIZE_MAX,
   STEP,
+  anchorOf,
+  humanizeOf,
+  msToTicks,
+  ticksToMs,
   addNote,
   clip,
   duration,
@@ -162,7 +170,18 @@ async function audition(pad: number, ticks: number | null) {
 // ---- editing with the mouse ----
 
 type Drag =
-  | { kind: "move"; note: EditNote; x: number; y: number; tick: number; row: number; moved: boolean }
+  /** `anchor`: the note's 1/32 line when the drag began; `humanize` travels with it. */
+  | {
+      kind: "move";
+      note: EditNote;
+      x: number;
+      y: number;
+      tick: number;
+      anchor: number;
+      humanize: number;
+      row: number;
+      moved: boolean;
+    }
   /** `saved`: an undo step already covers this drag (the note was just added). */
   | { kind: "resize"; note: EditNote; moved: boolean; saved: boolean };
 let drag: Drag | null = null;
@@ -191,7 +210,17 @@ function onDown(e: PointerEvent) {
     if (target.dataset.handle !== undefined) {
       drag = { kind: "resize", note, moved: false, saved: false };
     } else {
-      drag = { kind: "move", note, x: at.x, y: at.y, tick: note.tick, row: at.row, moved: false };
+      drag = {
+        kind: "move",
+        note,
+        x: at.x,
+        y: at.y,
+        tick: note.tick,
+        anchor: anchorOf(note, model.lengthTicks),
+        humanize: humanizeOf(note, model.lengthTicks),
+        row: at.row,
+        moved: false,
+      };
       audition(note.pad, duration(note));
     }
     return;
@@ -239,13 +268,13 @@ function onMove(e: PointerEvent) {
   }
   const dx = ((at.x - drag.x) / cell.value) * STEP;
   const dr = Math.round((at.y - drag.y) / ROW);
-  // Snap the moved note to the grid only once the pointer has gone at least half a step,
-  // so a click on a note off the grid does not shift it.
+  // The note's 1/32 line snaps to the grid once the pointer has gone at least half a grid
+  // step; the note keeps its humanize. A plain click on a note does not move it.
   const shifted = Math.abs(dx) >= grid.value / 2;
   if (!drag.moved && !shifted && dr === 0) return;
   const row = Math.min(15, Math.max(0, drag.row + dr));
   const pad = rows.value[row];
-  const tick = shifted ? roundTo(drag.tick + dx, grid.value) : drag.tick;
+  const tick = shifted ? roundTo(drag.anchor + dx, grid.value) + drag.humanize : drag.tick;
   const wasPad = drag.note.pad;
   if (tick === drag.note.tick && pad === wasPad) return;
   if (!drag.moved) {
@@ -295,6 +324,29 @@ function setSteps(s: number) {
 }
 
 const selectedSteps = computed(() => (selected.value ? duration(selected.value) / grid.value : 0));
+
+/** Humanize of the selected note, in ticks. */
+const selectedHumanize = computed(() => (selected.value ? humanizeOf(selected.value, model.lengthTicks) : 0));
+const ms = (ticks: number) => {
+  const v = Math.round(ticksToMs(ticks, tempo.value));
+  return v > 0 ? `+${v}` : String(v);
+};
+
+/** Set the selected note's humanize, in milliseconds: negative ahead of its 1/32 line,
+ * positive behind it. The note keeps its length. Refused when it would touch another
+ * note on its pad or start before the pattern. */
+function setHumanize(value: number) {
+  const n = selected.value;
+  if (!n || !Number.isFinite(value)) return;
+  const ticks = Math.max(-HUMANIZE_MAX, Math.min(HUMANIZE_MAX, msToTicks(value, tempo.value)));
+  const tick = anchorOf(n, model.lengthTicks) + ticks;
+  if (tick === n.tick) return;
+  checkpoint();
+  if (!move(model.notes, n, tick, n.pad, model.lengthTicks)) {
+    history.pop();
+    notify("Impossible : la note toucherait une autre note de ce pad, ou le début du pattern.");
+  }
+}
 const gridLabel = computed(() => GRIDS.find((g) => g.ticks === grid.value)?.label ?? "");
 
 function onKey(e: KeyboardEvent) {
@@ -315,7 +367,9 @@ function onKey(e: KeyboardEvent) {
   } else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
     e.preventDefault();
     checkpoint();
-    const tick = roundTo(n.tick, grid.value) + (e.key === "ArrowRight" ? 1 : -1) * grid.value;
+    const anchor = anchorOf(n, model.lengthTicks);
+    const tick =
+      roundTo(anchor, grid.value) + (e.key === "ArrowRight" ? 1 : -1) * grid.value + humanizeOf(n, model.lengthTicks);
     if (!move(model.notes, n, tick, n.pad, model.lengthTicks)) history.pop();
   }
 }
@@ -444,13 +498,20 @@ const gridStyle = computed(() => {
   };
 });
 
-const noteStyle = (n: EditNote) => ({
-  left: `${px(n.tick)}px`,
-  top: `${(n.pad % 16) * ROW + 3}px`,
-  width: `${Math.max(3, px(duration(n)) - 1)}px`,
-  height: `${ROW - 6}px`,
-  "--v": String(n.velocity / 127),
-});
+// A note is drawn from its 1/32 line to where it really ends; `--h` places the mark of
+// where it really starts.
+const noteStyle = (n: EditNote) => {
+  const anchor = anchorOf(n, model.lengthTicks);
+  return {
+    left: `${px(anchor)}px`,
+    top: `${(n.pad % 16) * ROW + 3}px`,
+    width: `${Math.max(3, px(n.tick + duration(n) - anchor) - 1)}px`,
+    height: `${ROW - 6}px`,
+    "--v": String(n.velocity / 127),
+    "--h": `${px(n.tick - anchor)}px`,
+  };
+};
+
 </script>
 
 <template>
@@ -514,7 +575,9 @@ const noteStyle = (n: EditNote) => ({
       </button>
       <div class="spacer" />
       <template v-if="selected">
-        <span class="muted small mono">{{ padLabel(selected.pad) }} · {{ position(selected.tick) }}</span>
+        <span class="muted small mono">
+          {{ padLabel(selected.pad) }} · {{ position(anchorOf(selected, model.lengthTicks)) }}
+        </span>
         <label class="group">
           <span class="label">Vélocité</span>
           <input
@@ -535,6 +598,17 @@ const noteStyle = (n: EditNote) => ({
             :value="Number.isInteger(selectedSteps) ? selectedSteps : selectedSteps.toFixed(2)"
             @change="setSteps(Number(($event.target as HTMLInputElement).value))"
           />
+        </label>
+        <label class="group" title="Écart avec la ligne de 1/32 la plus proche : négatif = en avance, positif = en retard">
+          <span class="label">Humanize (ms)</span>
+          <input
+            class="steps mono"
+            type="number"
+            step="1"
+            :value="Math.round(ticksToMs(selectedHumanize, tempo))"
+            @change="setHumanize(Number(($event.target as HTMLInputElement).value))"
+          />
+          <span class="muted small mono">{{ selectedHumanize > 0 ? "+" : "" }}{{ selectedHumanize }} t</span>
         </label>
       </template>
       <span v-else class="muted small">
@@ -590,11 +664,15 @@ const noteStyle = (n: EditNote) => ({
             :key="`${n.order}-${i}`"
             :data-note="i"
             class="note"
-            :class="{ selected: n === selected, off: n.tick % STEP !== 0 }"
+            :class="{ selected: n === selected }"
             :style="noteStyle(n)"
             @dblclick="remove(n)"
           >
             <span class="vel" />
+            <template v-if="humanizeOf(n, model.lengthTicks) !== 0">
+              <span class="onset" />
+              <span v-if="px(duration(n)) >= 26" class="hum mono">{{ ms(humanizeOf(n, model.lengthTicks)) }}</span>
+            </template>
             <span data-handle class="handle" />
           </div>
         </div>
@@ -783,11 +861,28 @@ const noteStyle = (n: EditNote) => ({
   background: color-mix(in srgb, var(--teal) calc(35% + var(--v) * 65%), var(--panel-2));
   border: 1px solid rgba(69, 212, 184, 0.7);
   cursor: grab;
-  overflow: hidden;
 }
 
-.note.off {
-  border-style: dashed;
+/* Where the note really starts, when it is off its 1/32 line. */
+.onset {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: var(--h);
+  width: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.hum {
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 9px;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.7);
+  pointer-events: none;
 }
 
 .note.selected {
