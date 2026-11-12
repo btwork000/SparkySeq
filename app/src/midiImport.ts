@@ -79,13 +79,17 @@ export function parseMidi(data: ArrayBuffer): MidiFile {
       let s = b[p];
       if (s & 0x80) p++;
       else s = status; // running status
+      // Skip meta and system exclusive events. The length is read before it is added:
+      // `p += varlen()` would add it to the position from before the length was read.
       if (s === 0xff) {
         p++; // meta type
-        p += varlen();
+        const n = varlen();
+        p += n;
         continue;
       }
       if (s === 0xf0 || s === 0xf7) {
-        p += varlen();
+        const n = varlen();
+        p += n;
         continue;
       }
       status = s;
