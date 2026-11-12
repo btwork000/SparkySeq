@@ -148,8 +148,9 @@ fn backup_dir(app: &AppHandle, project: u8) -> Result<PathBuf, Failure> {
 
 /// Write an edited pattern into `slot` of the current project. `project` (1-based) is the
 /// project the pattern was opened from: if another project is current now, nothing is
-/// written. `bars` is set when the length changed in the editor. The pattern being
-/// replaced is first saved under the app's data folder. Returns that backup's path.
+/// written. `bars` is set when the length changed in the editor. Unless `backup` is
+/// false, the pattern being replaced is first saved under the app's data folder. Returns
+/// that backup's path.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn pattern_write(
@@ -162,7 +163,11 @@ pub async fn pattern_write(
     trailer: [u8; 8],
     notes: Vec<EditNote>,
     extras: Vec<ExtraRecord>,
+    backup: Option<bool>,
 ) -> CmdResult<Option<String>> {
+    // Automatic sync writes after every pause in editing: only its first write keeps a
+    // copy of what the device held, not every later one.
+    let keep_backup = backup.unwrap_or(true);
     let dir = backup_dir(&app, project).map_err(|e| match e {
         Failure::Other(s) => s,
         Failure::Device(e) => e.to_string(),
@@ -214,7 +219,7 @@ pub async fn pattern_write(
         let bytes = pattern.encode();
 
         let path = pattern_path(project, slot_index);
-        let backup = if dev.pattern_exists(slot_index)? {
+        let backup = if keep_backup && dev.pattern_exists(slot_index)? {
             let old = dev.read_file(&path)?;
             std::fs::create_dir_all(&dir).map_err(|e| Failure::Other(e.to_string()))?;
             let stamp = SystemTime::now()

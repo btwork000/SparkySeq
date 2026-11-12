@@ -5,9 +5,13 @@ sur un emplacement vide).
 
 ## Utilisation
 
-- **Grille** : 1/4, 1/8, 1/16 ou 1/32 (1/16 par défaut, le choix est retenu). Les notes
-  se calent dessus quand on les pose, les déplace ou les allonge. 16 pads affichés ; les
-  boutons A à J changent de banque (le chiffre indique les notes de chaque banque).
+- **Vue** : **Pads** (16 pads d'une banque ; les boutons A à J changent de banque, le
+  chiffre indique les notes de chaque banque) ou **Piano roll** (un pad, choisi dans la
+  liste, ses notes de −12 à +12 demi-tons ; ligne « C 0 » = hauteur d'origine du
+  sample). Double-clic sur le nom d'un pad : son piano roll. Dans le piano roll, glisser
+  une note vers le haut ou le bas change sa hauteur ; un pad joue une note à la fois.
+- **Grille** : 1/4, 1/8 ou 1/16 (1/16 par défaut, le choix est retenu). Les notes se
+  calent dessus quand on les pose, les déplace ou les allonge.
 - **Clic** sur une case vide : ajoute une note (même longueur et vélocité que la
   dernière). Glisser tout de suite après le clic l'allonge.
 - **Glisser une note** : la déplacer dans le temps ou sur un autre pad.
@@ -38,8 +42,11 @@ sur un emplacement vide).
   autres pads dans les nouvelles mesures.
 - La hauteur d'une note transposée s'affiche dans la barre de la note sélectionnée
   (en demi-tons).
-- Rien ne part vers la machine avant **Envoyer vers la 404**. La lecture du pattern se
-  fait ensuite sur la 404.
+- Rien ne part vers la machine avant **Envoyer vers la 404**, sauf avec **Synchro auto** :
+  le pattern est alors envoyé une seconde après la dernière modification, sans
+  confirmation, et en fermant l'éditeur s'il reste un envoi en attente. Seul le premier
+  envoi de la session garde une copie de l'ancien pattern. En cas d'erreur, la synchro
+  auto se coupe. La lecture du pattern se fait sur la 404.
 
 ## Règles
 

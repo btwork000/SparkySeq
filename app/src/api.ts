@@ -359,6 +359,8 @@ export const api = {
     trailer: number[];
     notes: EditNote[];
     extras: ExtraRecord[];
+    /** False to skip the copy of the pattern being replaced (later automatic syncs). */
+    backup?: boolean;
   }) => invoke<string | null>("pattern_write", p),
   screens: () => invoke<ScreenImages>("screens"),
   listVolume: (volume: Volume, path: string) => invoke<CardListing>("list_volume", { volume, path }),

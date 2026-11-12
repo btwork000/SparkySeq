@@ -1,6 +1,6 @@
 // Editing rules of the pattern editor, kept apart from the component so they stay small
 // and readable. Times are in ticks (480 per quarter note). The grid step is chosen in the
-// editor (1/4 to 1/32); the finest, a 1/32 note, is `STEP`.
+// editor (1/4 to 1/16); `STEP`, a 1/32 note, is the unit of zoom and of humanize.
 //
 // A note's stored gate is its duration minus one tick (a 1/16 note is 119), as the
 // SP-404MKII writes it. Two notes on the same pad never overlap: a note stops where the
@@ -8,17 +8,17 @@
 // left as they are, and so are notes off the grid until they are moved.
 import type { EditNote } from "./api";
 
-/** Ticks in a 1/32 note, the finest grid step. */
+/** Ticks in a 1/32 note: the unit of zoom and of humanize. */
 export const STEP = 60;
 export const STEPS_PER_BAR = 32;
 export const BAR_TICKS = STEP * STEPS_PER_BAR;
 
-/** The grid steps the editor offers, in ticks. */
+/** The grid steps the editor offers, in ticks. The finest is a 1/16 note; humanize is
+ * still measured from the 1/32 lines. */
 export const GRIDS = [
   { label: "1/4", ticks: 480 },
   { label: "1/8", ticks: 240 },
   { label: "1/16", ticks: 120 },
-  { label: "1/32", ticks: 60 },
 ];
 
 /** `tick` rounded down to the grid. */

@@ -2,8 +2,8 @@
 
 ## Fait
 
-- **Éditeur de patterns** : voir [editeur-patterns.md](editeur-patterns.md). Grille 1/4 à
-  1/32, humanize par note, import MIDI. À vérifier sur la 404 : hauteurs des notes
+- **Éditeur de patterns** : voir [editeur-patterns.md](editeur-patterns.md). Vue pads et
+  piano roll, grille 1/4 à 1/16, humanize par note (au 1/32), import MIDI, synchro auto. À vérifier sur la 404 : hauteurs des notes
   importées.
 
 ## À faire
