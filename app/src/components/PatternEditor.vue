@@ -466,22 +466,41 @@ async function send() {
 
 const importing = ref(false);
 
-/** Put an imported sequence on `pad`: its notes there are replaced, the pattern grows to
- * fit the sequence if it has to, and other pads stay as they are. */
-function applyImport(plan: ImportPlan, pad: number) {
+/** Put an imported sequence on `pad`: its notes there are replaced and other pads stay as
+ * they are. The pattern grows to fit the sequence if it has to; with `repeat`, what the
+ * other pads played is copied into the new bars. */
+function applyImport(plan: ImportPlan, pad: number, repeat: boolean) {
   importing.value = false;
   checkpoint();
-  model.notes = model.notes.filter((n) => n.pad !== pad).concat(plan.notes);
-  nextOrder += plan.notes.length;
+  const others = model.notes.filter((n) => n.pad !== pad);
+  const kept = [...others];
   if (plan.bars > model.bars) {
-    model.lengthTicks = plan.bars * BAR_TICKS;
+    const oldLength = model.lengthTicks;
+    const newLength = plan.bars * BAR_TICKS;
+    if (repeat && oldLength > 0) {
+      const copies: EditNote[] = [];
+      for (let offset = oldLength; offset < newLength; offset += oldLength) {
+        for (const n of others) copies.push({ ...n, tick: n.tick + offset, order: nextOrder++ });
+      }
+      kept.push(...clip(copies, newLength));
+    }
+    model.lengthTicks = newLength;
     model.bars = plan.bars;
     model.barsChanged = true;
   }
+  // Number the imported notes after any copies, so every note has its own order.
+  model.notes = kept.concat(plan.notes.map((n) => ({ ...n, order: nextOrder++ })));
   viewBank.value = Math.floor(pad / 16);
   selected.value = null;
   notify(`${plan.notes.length} notes importées sur ${padLabel(pad)}. Rien n'est envoyé avant « Envoyer vers la 404 ».`, "info");
 }
+
+/** Notes each pad plays in the pattern, by pad index. */
+const notesPerPad = computed(() => {
+  const c = new Array(160).fill(0);
+  for (const n of model.notes) c[n.pad]++;
+  return c;
+});
 
 async function close() {
   if (dirty.value) {
@@ -648,6 +667,7 @@ const noteStyle = (n: EditNote) => {
       :pad="selected?.pad ?? viewBank * 16"
       :first-order="nextOrder"
       :current-bars="model.bars"
+      :existing="notesPerPad"
       @import="applyImport"
       @cancel="importing = false"
     />

@@ -32,7 +32,10 @@ sur un emplacement vide).
   sont ramenées d'une octave. Un pad joue une note à la fois : dans un accord, la note la
   plus haute est gardée. Le placement exact (jeu hors grille) est conservé, le tempo du
   fichier est ignoré, et le pattern s'allonge (2, 4, 8 ou 16 mesures) si la séquence le
-  demande. Les notes déjà présentes sur ce pad sont remplacées.
+  demande. Les notes déjà présentes sur ce pad sont remplacées (un avertissement le dit,
+  avec leur nombre) ; les autres pads ne changent pas. Quand le pattern s'allonge, la
+  case « Répéter le pattern existant » (cochée par défaut) recopie ce que jouaient les
+  autres pads dans les nouvelles mesures.
 - La hauteur d'une note transposée s'affiche dans la barre de la note sélectionnée
   (en demi-tons).
 - Rien ne part vers la machine avant **Envoyer vers la 404**. La lecture du pattern se

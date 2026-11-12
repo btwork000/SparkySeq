@@ -6,8 +6,14 @@ import { BANK_LETTERS, padLabel } from "../format";
 import { parseMidi, planImport, type ImportPlan, type MidiFile } from "../midiImport";
 import { store } from "../store";
 
-const props = defineProps<{ pad: number; firstOrder: number; currentBars: number }>();
-const emit = defineEmits<{ import: [plan: ImportPlan, pad: number]; cancel: [] }>();
+const props = defineProps<{
+  pad: number;
+  firstOrder: number;
+  currentBars: number;
+  /** Notes each pad already plays in the pattern, by pad index. */
+  existing: number[];
+}>();
+const emit = defineEmits<{ import: [plan: ImportPlan, pad: number, repeat: boolean]; cancel: [] }>();
 
 const file = ref<MidiFile | null>(null);
 const fileName = ref("");
@@ -15,11 +21,16 @@ const problem = ref("");
 const pad = ref(props.pad);
 const reference = ref(60);
 const transpose = ref(0);
+/** When the pattern grows, copy what it already plays into the new bars. */
+const repeat = ref(true);
 
 const plan = computed(() =>
   file.value ? planImport(file.value, pad.value, reference.value, transpose.value, props.firstOrder) : null,
 );
 const bars = computed(() => Math.max(props.currentBars, plan.value?.bars ?? 0));
+const grows = computed(() => bars.value > props.currentBars);
+const replaced = computed(() => props.existing[pad.value] ?? 0);
+const othersPlay = computed(() => props.existing.some((n, i) => n > 0 && i !== pad.value));
 
 async function choose(e: Event) {
   const input = e.target as HTMLInputElement;
@@ -100,6 +111,12 @@ const pads = Array.from({ length: 160 }, (_, i) => i);
         </div>
       </div>
 
+      <div v-if="replaced" class="alert">
+        <strong>{{ padLabel(pad) }} joue déjà {{ replaced }} note{{ replaced > 1 ? "s" : "" }} dans ce pattern.</strong>
+        {{ replaced > 1 ? "Elles seront remplacées" : "Elle sera remplacée" }} par la séquence. Choisis un pad libre pour
+        garder ce qui est déjà là.
+      </div>
+
       <template v-if="plan">
         <div v-if="plan.outOfRange" class="alert">
           <strong>{{ plan.outOfRange }} note{{ plan.outOfRange > 1 ? "s sortent" : " sort" }} de l'ambitus de la 404</strong>
@@ -109,20 +126,31 @@ const pads = Array.from({ length: 160 }, (_, i) => i);
           <button class="fit" @click="fit">Transposer automatiquement</button>
         </div>
         <ul class="summary small">
-          <li>{{ plan.notes.length }} notes sur {{ padLabel(pad) }}, de {{ signed(plan.lowest) }} à {{ signed(plan.highest) }} demi-tons.</li>
+          <li>
+            {{ plan.notes.length }} notes sur {{ padLabel(pad) }},
+            {{ plan.lowest === plan.highest ? `toutes à ${signed(plan.lowest)}` : `de ${signed(plan.lowest)} à ${signed(plan.highest)}` }}
+            demi-tons.
+          </li>
           <li>Pattern de {{ bars }} mesures{{ bars > currentBars ? ` (allongé, il en a ${currentBars})` : "" }}.</li>
           <li v-if="plan.chordNotes">
             {{ plan.chordNotes }} note{{ plan.chordNotes > 1 ? "s" : "" }} d'accords ignorée{{ plan.chordNotes > 1 ? "s" : "" }} : un pad joue une note à la fois (la plus haute est gardée).
           </li>
           <li v-if="plan.tooLate">{{ plan.tooLate }} note{{ plan.tooLate > 1 ? "s" : "" }} après 16 mesures ignorée{{ plan.tooLate > 1 ? "s" : "" }}.</li>
-          <li>Les notes déjà présentes sur {{ padLabel(pad) }} sont remplacées ; les autres pads ne changent pas.</li>
+          <li v-if="!replaced">{{ padLabel(pad) }} est libre dans ce pattern ; les autres pads ne changent pas.</li>
           <li class="muted">Le tempo du fichier est ignoré : le pattern joue au tempo de la banque.</li>
         </ul>
       </template>
 
+      <label v-if="plan && grows && othersPlay" class="repeat">
+        <input v-model="repeat" type="checkbox" />
+        <span>
+          Répéter le pattern existant ({{ currentBars }} mesure{{ currentBars > 1 ? "s" : "" }}) jusqu'à {{ bars }} mesures
+        </span>
+      </label>
+
       <div class="buttons">
         <button @click="emit('cancel')">Annuler</button>
-        <button class="primary" :disabled="!plan || !plan.notes.length" @click="plan && emit('import', plan, pad)">
+        <button class="primary" :disabled="!plan || !plan.notes.length" @click="plan && emit('import', plan, pad, repeat && grows && othersPlay)">
           Importer
         </button>
       </div>
@@ -239,6 +267,14 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 3px;
+}
+
+.repeat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
 }
 
 .buttons {
