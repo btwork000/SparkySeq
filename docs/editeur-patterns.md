@@ -25,6 +25,16 @@ sur un emplacement vide).
 - **Mesures** : 2, 4, 8 ou 16. Raccourcir demande confirmation si des notes disparaissent.
 - **Écouter sur la 404** : chaque note posée ou déplacée sonne sur la machine. Maintenir
   le nom d'un pad à gauche le fait sonner.
+- **Importer MIDI…** : choisir un fichier .mid et le pad qui le joue. La note du sample
+  (hauteur d'origine) vaut 60 par défaut. Les notes plus hautes ou plus basses deviennent
+  des notes transposées, de −12 à +12 demi-tons. Une alerte signale les notes hors de
+  cet ambitus ; on peut transposer la séquence (±1, ±12, ou automatiquement), sinon elles
+  sont ramenées d'une octave. Un pad joue une note à la fois : dans un accord, la note la
+  plus haute est gardée. Le placement exact (jeu hors grille) est conservé, le tempo du
+  fichier est ignoré, et le pattern s'allonge (2, 4, 8 ou 16 mesures) si la séquence le
+  demande. Les notes déjà présentes sur ce pad sont remplacées.
+- La hauteur d'une note transposée s'affiche dans la barre de la note sélectionnée
+  (en demi-tons).
 - Rien ne part vers la machine avant **Envoyer vers la 404**. La lecture du pattern se
   fait ensuite sur la 404.
 
@@ -53,6 +63,9 @@ sur un emplacement vide).
   premier test sur un projet de brouillon, avec une sauvegarde.
 - **Pitch d'une note neuve** : `0x8D`, la valeur que la 404 écrit pour une note non
   transposée.
+- **Pitch d'une note importée** : `0x8D` + demi-tons (−12 à +12). Le rythme d'un import
+  est sûr ; les hauteurs sont à vérifier à l'écoute sur la 404, et le pad doit
+  peut-être être en mode chromatique.
 - **Longueur** : stockée en ticks moins un (une double croche = 119).
 
 Pour analyser un fichier de pattern sans la machine :

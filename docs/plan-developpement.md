@@ -2,10 +2,17 @@
 
 ## Fait
 
-- **Éditeur de patterns** : voir [editeur-patterns.md](editeur-patterns.md). À tester sur la
-  404 (envoi léger, pitch, longueurs).
+- **Éditeur de patterns** : voir [editeur-patterns.md](editeur-patterns.md). Grille 1/4 à
+  1/32, humanize par note, import MIDI. À vérifier sur la 404 : hauteurs des notes
+  importées.
 
 ## À faire
+
+### Filtre passe-haut / passe-bas (onglet Samples)
+
+Traitement gravé dans le sample sur l'ordi, puis renvoyé sur le pad, original gardé.
+Écoute avant envoi. Biquads de Vicanek et pentes Butterworth comme BT EQ MS. À décider :
+pentes (12/24/48 ou une seule) et résonance.
 
 ### Fondu de boucle (onglet Samples)
 

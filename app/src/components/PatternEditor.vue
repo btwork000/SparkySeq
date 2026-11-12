@@ -13,6 +13,8 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import { api, type EditNote, type EditablePattern, type ExtraRecord } from "../api";
 import { BANK_LETTERS, bpm, padLabel } from "../format";
 import { ask, handleError, notify, store } from "../store";
+import MidiImport from "./MidiImport.vue";
+import { semitonesOf, type ImportPlan } from "../midiImport";
 import {
   BAR_TICKS,
   GRIDS,
@@ -460,6 +462,27 @@ async function send() {
   }
 }
 
+// ---- MIDI import ----
+
+const importing = ref(false);
+
+/** Put an imported sequence on `pad`: its notes there are replaced, the pattern grows to
+ * fit the sequence if it has to, and other pads stay as they are. */
+function applyImport(plan: ImportPlan, pad: number) {
+  importing.value = false;
+  checkpoint();
+  model.notes = model.notes.filter((n) => n.pad !== pad).concat(plan.notes);
+  nextOrder += plan.notes.length;
+  if (plan.bars > model.bars) {
+    model.lengthTicks = plan.bars * BAR_TICKS;
+    model.bars = plan.bars;
+    model.barsChanged = true;
+  }
+  viewBank.value = Math.floor(pad / 16);
+  selected.value = null;
+  notify(`${plan.notes.length} notes importées sur ${padLabel(pad)}. Rien n'est envoyé avant « Envoyer vers la 404 ».`, "info");
+}
+
 async function close() {
   if (dirty.value) {
     const ok = await ask("Fermer l'éditeur ?", "Les modifications non envoyées seront perdues.", [
@@ -557,6 +580,7 @@ const noteStyle = (n: EditNote) => {
       </label>
 
       <div class="spacer" />
+      <button :disabled="!editable || saving" @click="importing = true">Importer MIDI…</button>
       <button :disabled="!dirty || saving" @click="revert">Tout annuler</button>
       <button class="primary" :disabled="!editable || saving || store.pending > 0" @click="send">
         <span v-if="saving" class="spinner" /> Envoyer vers la 404
@@ -599,6 +623,9 @@ const noteStyle = (n: EditNote) => {
             @change="setSteps(Number(($event.target as HTMLInputElement).value))"
           />
         </label>
+        <span v-if="semitonesOf(selected.pitch) !== 0" class="muted small mono" title="Hauteur de la note, en demi-tons">
+          {{ semitonesOf(selected.pitch) === null ? "hauteur ?" : `${semitonesOf(selected.pitch)! > 0 ? "+" : ""}${semitonesOf(selected.pitch)} dt` }}
+        </span>
         <label class="group" title="Écart avec la ligne de 1/32 la plus proche : négatif = en avance, positif = en retard">
           <span class="label">Humanize (ms)</span>
           <input
@@ -615,6 +642,15 @@ const noteStyle = (n: EditNote) => {
         Clic : ajouter · glisser : déplacer · bord droit : longueur · clic droit : supprimer · Ctrl+Z
       </span>
     </div>
+
+    <MidiImport
+      v-if="importing"
+      :pad="selected?.pad ?? viewBank * 16"
+      :first-order="nextOrder"
+      :current-bars="model.bars"
+      @import="applyImport"
+      @cancel="importing = false"
+    />
 
     <div v-if="loading" class="placeholder muted"><span class="spinner" /> Lecture du pattern…</div>
     <div v-else-if="source && !editable" class="placeholder muted">
